@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
+	<!-- App already has network.client, so Sparkle downloads in-process (its sandboxed Downloader.xpc is unnecessary) -->
+	<key>SUEnableDownloaderService</key>
+	<false/>
+	<key>SUEnableInstallerLauncherService</key>
+	<true/>
+	<!-- Update feed: set FEED_BASE_URL in scripts/build-dmg.sh; empty = updates switched off -->
+	<key>SUFeedURL</key>
+	<string>$(STICKYNOTCH_FEED_URL)</string>
+	<!-- Public half of the update signing key (private half lives in the release Mac's Keychain) -->
+	<key>SUPublicEDKey</key>
+	<string>hfw02jTpaUZqY8rxVZvzlmbwehTPRk8dv8iIJ/W6HVg=</string>
+	<key>UTImportedTypeDeclarations</key>
+	<array>
+		<dict/>
+	</array>
+</dict>
+</plist>

@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StickyNotch</title>
+<meta name="description" content="A tiny, lightweight Mac notch app: music, sticky notes, clipboard history and more, right under your notch.">
+<meta property="og:title" content="StickyNotch">
+<meta property="og:description" content="Music, sticky notes and more, right under your Mac's notch.">
+<meta property="og:image" content="icon.png">
+<link rel="icon" href="favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Gochi+Hand&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #f0e2c4;          /* same cream as arsal.me */
+    --ink: #161616;
+    --pencil: #3a332a;
+    --muted: #8a7c5e;
+    --note: #ffe066;
+    --note-shade: #f2c94c;
+    --rule: rgba(58, 51, 42, 0.07);
+    color-scheme: light;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background-color: var(--paper);
+    /* faint notebook rules + paper grain */
+    background-image:
+      linear-gradient(var(--rule) 1px, transparent 1px),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3'/%3E%3CfeColorMatrix values='0 0 0 0 0.23 0 0 0 0 0.2 0 0 0 0 0.16 0 0 0 .07 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 100% 34px, 160px 160px;
+    color: var(--ink);
+    font: 400 16px/1.6 "IBM Plex Sans", "Helvetica Neue", Helvetica, sans-serif;
+    overflow-x: hidden;
+  }
+  a { color: var(--ink); text-underline-offset: 3px; text-decoration-thickness: 1px; }
+  a:hover { color: var(--muted); }
+
+  /* ---------- doodles ---------- */
+  .doodles { position: fixed; inset: 0; pointer-events: none; z-index: 0; }
+  .doodle {
+    position: absolute; width: var(--s, 70px); height: auto;
+    color: var(--pencil); opacity: .32;
+    transform: rotate(var(--r, 0deg));
+    animation: bob 7s ease-in-out infinite;
+    animation-delay: var(--d, 0s);
+  }
+  .doodle use { stroke: currentColor; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; filter: url(#wobble); }
+  @keyframes bob { 50% { translate: 0 -6px; } }
+
+  /* ---------- layout ---------- */
+  main { position: relative; z-index: 1; max-width: 760px; margin: 0 auto; padding: 72px 16px 40px; }
+  header { text-align: center; }
+  .logo {
+    width: 148px; height: 148px; display: block; margin: 0 auto;
+    animation: drop .7s cubic-bezier(.2,1.4,.4,1) both;
+  }
+  h1 {
+    font-family: "Gochi Hand", cursive; font-weight: 400;
+    font-size: clamp(56px, 11vw, 92px); line-height: 1; letter-spacing: .5px;
+    margin: 14px 0 4px;
+    animation: rise .6s .12s ease-out both;
+  }
+  h1 .scribble { display: block; width: min(320px, 70%); height: 14px; margin: 2px auto 0; color: var(--note-shade); }
+  .tagline { font-size: 18px; max-width: 30em; margin: 10px auto 0; animation: rise .6s .22s ease-out both; }
+
+  /* ---------- install: a taped sticky note ---------- */
+  .install { display: flex; flex-direction: column; align-items: center; margin: 44px 0 10px; animation: rise .6s .32s ease-out both; }
+  .download {
+    position: relative; display: inline-block; text-decoration: none; color: var(--ink);
+    background: linear-gradient(170deg, var(--note) 0%, var(--note) 70%, var(--note-shade) 100%);
+    padding: 20px 34px 18px; transform: rotate(-2deg);
+    box-shadow: 0 10px 18px -8px rgba(58, 45, 10, .45), 0 2px 0 rgba(0,0,0,.04);
+    transition: transform .18s ease, box-shadow .18s ease;
+  }
+  .download::before { /* tape */
+    content: ""; position: absolute; top: -12px; left: 50%; width: 86px; height: 24px; translate: -50% 0;
+    background: rgba(255, 255, 255, .55); border: 1px solid rgba(255,255,255,.6); transform: rotate(3deg);
+  }
+  .download:hover { transform: rotate(0deg) translateY(-3px); box-shadow: 0 16px 22px -10px rgba(58, 45, 10, .5); color: var(--ink); }
+  .download:focus-visible { outline: 2px dashed var(--ink); outline-offset: 6px; }
+  .download .big { font-family: "Gochi Hand", cursive; font-size: 30px; line-height: 1.1; display: flex; align-items: center; gap: 10px; }
+  .download svg { width: 26px; height: 26px; }
+  .download .small { font: 500 12px/1.4 "IBM Plex Mono", monospace; color: #5b4a12; margin-top: 4px; display: block; text-align: center; }
+  .heads-up {
+    max-width: 30em; margin: 26px auto 0; text-align: center;
+    font: 400 13px/1.55 "IBM Plex Mono", monospace; color: var(--muted);
+  }
+  .heads-up b { color: var(--pencil); font-weight: 500; }
+
+  /* ---------- what it does ---------- */
+  section { margin-top: 70px; }
+  h2 { font-family: "Gochi Hand", cursive; font-weight: 400; font-size: 38px; margin: 0 0 6px; }
+  .lede { margin: 0 0 22px; max-width: 34em; }
+  .features { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 18px; }
+  .features li {
+    background: rgba(255, 252, 243, .55); border: 1.5px solid rgba(58, 51, 42, .55);
+    border-radius: 255px 15px 225px 15px / 15px 225px 15px 255px; /* hand-drawn box */
+    padding: 16px 18px 14px; transform: rotate(var(--t, 0deg));
+    transition: transform .2s ease, background .2s ease;
+  }
+  .features li:nth-child(odd) { --t: -.6deg; }
+  .features li:nth-child(even) { --t: .7deg; }
+  .features li:hover { transform: rotate(0deg) translateY(-2px); background: rgba(255, 224, 102, .35); }
+  .features h3 { font-family: "Gochi Hand", cursive; font-weight: 400; font-size: 24px; margin: 0 0 2px; }
+  .features p { margin: 0; font-size: 14.5px; }
+  .light { margin-top: 26px; font: 400 13px/1.6 "IBM Plex Mono", monospace; color: var(--muted); text-align: center; }
+
+  /* ---------- footer ---------- */
+  footer { margin-top: 80px; padding-top: 22px; border-top: 1.5px dashed rgba(58, 51, 42, .35); text-align: center; font-size: 14px; }
+  footer p { margin: 6px 0; }
+  footer .mono { font: 400 12.5px/1.6 "IBM Plex Mono", monospace; color: var(--muted); }
+
+  @keyframes rise { from { opacity: 0; transform: translateY(10px); } }
+  @keyframes drop { from { opacity: 0; transform: translateY(-24px) rotate(-8deg) scale(.9); } }
+  @media (max-width: 640px) {
+    main { padding-top: 48px; }
+    .doodle { --s: 46px !important; opacity: .22; }
+    .doodle.hide-sm { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Doodle shapes, drawn once and reused -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <filter id="wobble"><feTurbulence type="fractalNoise" baseFrequency=".035" numOctaves="2" seed="4"/><feDisplacementMap in="SourceGraphic" scale="2.6"/></filter>
+    <symbol id="pencil" viewBox="0 0 100 100"><path d="M18 82 L26 60 L70 16 L84 30 L40 74 Z M26 60 L40 74 M18 82 L32 78 M62 24 L76 38 M70 16 Q76 10 82 16 Q88 22 84 30"/></symbol>
+    <symbol id="note1" viewBox="0 0 100 100"><path d="M40 78 Q24 72 30 64 Q38 56 50 64 L52 66 L52 18 Q66 26 74 40 Q68 32 54 30"/><ellipse cx="40" cy="70" rx="12" ry="8" transform="rotate(-20 40 70)"/></symbol>
+    <symbol id="note2" viewBox="0 0 100 100"><path d="M32 74 L32 26 L76 16 L76 64 M32 38 L76 28"/><ellipse cx="24" cy="76" rx="10" ry="7" transform="rotate(-18 24 76)"/><ellipse cx="68" cy="66" rx="10" ry="7" transform="rotate(-18 68 66)"/></symbol>
+    <symbol id="star" viewBox="0 0 100 100"><path d="M50 14 Q54 44 86 50 Q54 56 50 86 Q46 56 14 50 Q46 44 50 14 Z"/></symbol>
+    <symbol id="sticky" viewBox="0 0 100 100"><path d="M18 18 L82 18 L82 64 L62 84 L18 84 Z M82 64 L64 66 L62 84 M30 36 L68 36 M30 48 L62 48 M30 60 L50 60"/></symbol>
+    <symbol id="squiggle" viewBox="0 0 100 100"><path d="M8 54 Q18 34 28 54 T48 54 T68 54 T88 54"/></symbol>
+    <symbol id="headphones" viewBox="0 0 100 100"><path d="M22 62 Q20 24 50 22 Q80 24 78 62 M16 60 Q16 54 24 54 L28 54 L28 80 L24 80 Q16 80 16 72 Z M84 60 Q84 54 76 54 L72 54 L72 80 L76 80 Q84 80 84 72 Z"/></symbol>
+    <symbol id="sparkles" viewBox="0 0 100 100"><path d="M20 30 L30 22 M50 16 L50 6 M80 30 L70 22 M16 58 L6 60 M84 58 L94 60"/></symbol>
+  </defs>
+</svg>
+
+<div class="doodles" aria-hidden="true">
+  <svg class="doodle" style="top:7%;left:5%;--s:84px;--r:-18deg"><use href="#pencil"/></svg>
+  <svg class="doodle" style="top:13%;right:7%;--s:72px;--r:12deg;--d:-2s"><use href="#note1"/></svg>
+  <svg class="doodle hide-sm" style="top:38%;left:3%;--s:66px;--r:8deg;--d:-4s"><use href="#note2"/></svg>
+  <svg class="doodle hide-sm" style="top:30%;right:4%;--s:58px;--r:0deg;--d:-1s"><use href="#star"/></svg>
+  <svg class="doodle" style="top:62%;right:6%;--s:76px;--r:-10deg;--d:-3s"><use href="#sticky"/></svg>
+  <svg class="doodle hide-sm" style="top:68%;left:6%;--s:70px;--r:-6deg;--d:-5s"><use href="#headphones"/></svg>
+  <svg class="doodle hide-sm" style="top:86%;left:18%;--s:90px;--r:4deg;--d:-2.5s"><use href="#squiggle"/></svg>
+  <svg class="doodle" style="top:88%;right:16%;--s:54px;--r:20deg;--d:-6s"><use href="#note1"/></svg>
+  <svg class="doodle hide-sm" style="top:50%;right:14%;--s:40px;--r:0deg;--d:-3.5s"><use href="#star"/></svg>
+  <svg class="doodle hide-sm" style="top:20%;left:16%;--s:38px;--r:-14deg;--d:-4.5s"><use href="#star"/></svg>
+</div>
+
+<main>
+  <header>
+    <img class="logo" src="icon.png" width="148" height="148" alt="StickyNotch logo: a smiling notch-shaped doodle on a yellow sticky note">
+    <h1>StickyNotch
+      <svg class="scribble" viewBox="0 0 320 14" preserveAspectRatio="none" aria-hidden="true"><path d="M4 9 Q60 2 120 8 T230 7 T316 6" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"/></svg>
+    </h1>
+    <p class="tagline">A tiny, lightweight app that turns your Mac's notch into a little desk: music, sticky notes, your clipboard and more, right where you already look.</p>
+  </header>
+
+  <div class="install">
+    <a class="download" href="StickyNotch-1.0.dmg" download>
+      <span class="big">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 19.5h14"/></svg>
+        Download for Mac
+      </span>
+      <span class="small">v1.0 · 10 MB · macOS 14+ · Apple Silicon &amp; Intel</span>
+    </a>
+    <p class="heads-up">Open the DMG and drag StickyNotch into Applications. The first time you open it, macOS will say it can't verify the app: go to <b>System Settings → Privacy &amp; Security</b> and click <b>Open Anyway</b>. After that it updates itself.</p>
+  </div>
+
+  <section aria-labelledby="what">
+    <h2 id="what">What it does</h2>
+    <p class="lede">Hover over the notch and it opens into a small panel. Move away and it tucks itself back in.</p>
+    <ul class="features">
+      <li><h3>Music player</h3><p>See what's playing in Spotify or Apple Music, scrub, skip, and see which AirPods or speakers it's on. Spinning vinyl optional.</p></li>
+      <li><h3>Sticky notes</h3><p>Up to five notes in the notch. Lock one to keep it open (handy in interviews) and drag it wider when you need room.</p></li>
+      <li><h3>Clipboard history</h3><p>Your last 20 copied texts, one click to copy again. Kept in memory only, and passwords are skipped.</p></li>
+      <li><h3>File shelf</h3><p>Drop files on the notch to park them, preview with Quick Look, drag them out where you need them.</p></li>
+      <li><h3>Next meeting</h3><p>A countdown to your next meeting in the closed notch, with a one-click Join for Zoom, Meet and Teams.</p></li>
+      <li><h3>Claude Code</h3><p>See when Claude is working or done, and Allow or Deny its permission requests straight from the notch.</p></li>
+    </ul>
+    <p class="light">Built to stay out of the way: about 50 MB of memory and ~0% CPU while idle.</p>
+  </section>
+
+  <footer>
+    <p>StickyNotch is open source: <a href="https://github.com/arsallls/StickyNotch">github.com/arsallls/StickyNotch</a></p>
+    <p class="mono">Forked from <a href="https://github.com/TheBoredTeam/boring.notch">boring.notch</a> by TheBoredTeam · GPL-3.0 · made by <a href="https://arsal.me/">Arsal</a></p>
+  </footer>
+</main>
+</body>
+</html>
