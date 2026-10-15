@@ -2,12 +2,12 @@
 //  ClaudeCodeBridge.swift
 //  StickyNotch
 //
-//  Shows Claude Code permission requests and finished turns in the notch.
+//  Shows when Claude Code is working, waiting on you, or done, in the notch.
 //  Claude Code's "http" hooks POST to a tiny loopback-only listener here:
-//    POST /claude/PermissionRequest  → held open until you click Allow / Deny (or it times out)
+//    POST /claude/PermissionRequest  → "Claude asked you a question" notice (you answer in the terminal)
 //    POST /claude/Stop               → "Claude finished" notice
-//  Every request must carry the X-StickyNotch-Token header. Anything else (no app running, wrong token,
-//  timeout) answers with an empty 200, which Claude Code treats as "no decision" → normal terminal prompt.
+//  Every request must carry the X-StickyNotch-Token header. Every reply is an empty 200, which Claude Code
+//  treats as "no decision", so it always shows its normal terminal prompt.
 //
 
 import AppKit
@@ -15,23 +15,12 @@ import Defaults
 import Network
 import SwiftUI
 
-// MARK: - State shown in the notch
-
-struct AgentPermission: Identifiable {
-    let id: UUID
-    let tool: String
-    let detail: String
-    let project: String
-    /// Claude Code's own suggested rule(s) for "Always allow" (passed back as updatedPermissions)
-    let suggestions: Any?
-    let respond: (Data) -> Void
-}
-
 @MainActor
 final class ClaudeCodeBridge: ObservableObject {
     static let shared = ClaudeCodeBridge()
 
-    @Published private(set) var pending: [AgentPermission] = []
+    /// Claude is waiting on you in the terminal. Shown until you open the notch, Claude moves on, or a minute passes.
+    @Published private(set) var askingProject: String?
     /// Shown until you open the notch (or for a minute)
     @Published private(set) var finishedProject: String?
     /// session_id → project, for sessions with a prompt in flight
@@ -46,12 +35,9 @@ final class ClaudeCodeBridge: ObservableObject {
     }
 
     nonisolated static let port: UInt16 = 47823
-    /// Unanswered requests fall back to the terminal prompt after this long.
-    /// ponytail: fixed; make it a setting if 30s feels wrong
-    static let decisionTimeout: TimeInterval = 30
-
     private var listener: NWListener?
     private var finishedTask: Task<Void, Never>?
+    private var askingTask: Task<Void, Never>?
 
     /// Random secret the hooks must send; generated once and kept in settings.
     var token: String {
@@ -84,8 +70,7 @@ final class ClaudeCodeBridge: ObservableObject {
     func stop() {
         listener?.cancel()
         listener = nil
-        pending.forEach { $0.respond(Data()) } // let waiting sessions fall back to the terminal
-        pending.removeAll()
+        askingProject = nil
     }
 
     private func receive(on connection: NWConnection, buffer: Data) {
@@ -118,33 +103,19 @@ final class ClaudeCodeBridge: ObservableObject {
 
         switch request.path {
         case "/claude/PermissionRequest":
-            let tool = json["tool_name"] as? String ?? "Tool"
-            let detail = Self.describe(tool: tool, input: json["tool_input"] as? [String: Any] ?? [:])
-            let id = UUID()
-            var answered = false
-            let item = AgentPermission(id: id, tool: tool, detail: detail, project: project,
-                                       suggestions: json["permission_suggestions"]) { [weak self] body in
-                guard !answered else { return }
-                answered = true
-                Self.reply(body, on: connection)
-                MainActor.assumeIsolated { withAnimation(Self.spring) { self?.pending.removeAll { $0.id == id } } }
-            }
-            withAnimation(Self.spring) {
-                pending.append(item)
-                running[sessionID] = running[sessionID] ?? (project, Date()) // asking implies working
-            }
-            Task { @MainActor in
-                try? await Task.sleep(for: .seconds(Self.decisionTimeout))
-                item.respond(Data()) // no answer → Claude Code shows its normal prompt
-            }
+            Self.reply(Data(), on: connection) // no decision: Claude Code asks in the terminal right away
+            withAnimation(Self.spring) { running[sessionID] = running[sessionID] ?? (project, Date()) } // asking implies working
+            showAsking(project)
 
         case "/claude/UserPromptSubmit":
             Self.reply(Data(), on: connection) // empty = don't touch the prompt
             withAnimation(Self.spring) { running[sessionID] = (project, Date()) }
+            acknowledgeAsking()
 
         case "/claude/Stop", "/claude/StopFailure":
             Self.reply(Data(), on: connection)
             withAnimation(Self.spring) { running[sessionID] = nil }
+            acknowledgeAsking()
             showFinished(project)
 
         case "/claude/SessionEnd":
@@ -156,21 +127,22 @@ final class ClaudeCodeBridge: ObservableObject {
         }
     }
 
-    // MARK: Decisions
+    // MARK: Notices
 
-    func allow(_ item: AgentPermission, always: Bool = false) {
-        var decision: [String: Any] = ["behavior": "allow"]
-        if always, let suggestions = item.suggestions { decision["updatedPermissions"] = suggestions }
-        item.respond(Self.decisionBody(decision))
+    private func showAsking(_ project: String) {
+        withAnimation(Self.spring) { askingProject = project }
+        askingTask?.cancel()
+        askingTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(60))
+            guard !Task.isCancelled else { return }
+            acknowledgeAsking()
+        }
     }
 
-    func deny(_ item: AgentPermission) {
-        item.respond(Self.decisionBody(["behavior": "deny", "message": "Denied from StickyNotch"]))
-    }
-
-    private static func decisionBody(_ decision: [String: Any]) -> Data {
-        let output: [String: Any] = ["hookSpecificOutput": ["hookEventName": "PermissionRequest", "decision": decision]]
-        return (try? JSONSerialization.data(withJSONObject: output)) ?? Data()
+    func acknowledgeAsking() {
+        guard askingProject != nil else { return }
+        askingTask?.cancel()
+        withAnimation(Self.spring) { askingProject = nil }
     }
 
     private func showFinished(_ project: String) {
@@ -192,24 +164,6 @@ final class ClaudeCodeBridge: ObservableObject {
 
     // MARK: Helpers
 
-    /// One readable line for the request: the command, file name, URL, …
-    nonisolated static func describe(tool: String, input: [String: Any]) -> String {
-        let text: String
-        if let command = input["command"] as? String {
-            text = command
-        } else if let path = (input["file_path"] ?? input["notebook_path"] ?? input["path"]) as? String {
-            text = URL(fileURLWithPath: path).lastPathComponent
-        } else if let url = input["url"] as? String {
-            text = url
-        } else if let first = input.values.compactMap({ $0 as? String }).first {
-            text = first
-        } else {
-            text = ""
-        }
-        let oneLine = text.replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespaces)
-        return oneLine.count > 120 ? String(oneLine.prefix(120)) + "…" : oneLine
-    }
-
     nonisolated private static func reply(_ body: Data, status: String = "200 OK", on connection: NWConnection) {
         var response = Data("HTTP/1.1 \(status)\r\nContent-Type: application/json\r\nContent-Length: \(body.count)\r\nConnection: close\r\n\r\n".utf8)
         response.append(body)
@@ -227,7 +181,7 @@ final class ClaudeCodeBridge: ObservableObject {
                         "timeout": timeout, "headers": ["X-StickyNotch-Token": token]]]]
         }
         return [
-            "PermissionRequest": hook("PermissionRequest", timeout: Int(Self.decisionTimeout) + 5),
+            "PermissionRequest": hook("PermissionRequest", timeout: 5),
             "UserPromptSubmit": hook("UserPromptSubmit", timeout: 5),
             "Stop": hook("Stop", timeout: 5),
             "StopFailure": hook("StopFailure", timeout: 5),
@@ -356,64 +310,25 @@ struct HookHTTPRequest {
 
 // MARK: - Notch views
 
-/// Closed notch grows into a small strip: who's asking, what, and Allow / Deny / Always.
-struct AgentPermissionStrip: View {
+/// "? Claude  [notch]  project" while Claude waits for your answer in the terminal.
+struct AgentAskingActivity: View {
     @EnvironmentObject var vm: BoringViewModel
-    @ObservedObject private var bridge = ClaudeCodeBridge.shared
-    let item: AgentPermission
+    let project: String
 
     var body: some View {
-        VStack(spacing: 6) {
-            HStack(spacing: 0) {
-                Label("Claude", systemImage: "sparkle")
-                    .foregroundStyle(.orange)
-                    .frame(width: 100, alignment: .leading)
-                Rectangle().fill(.black).frame(width: vm.closedNotchSize.width)
-                Text(bridge.pending.count > 1 ? "\(item.project) +\(bridge.pending.count - 1)" : item.project)
-                    .foregroundStyle(.gray)
-                    .lineLimit(1)
-                    .frame(width: 100, alignment: .trailing)
-            }
-            .font(.system(size: 12, weight: .semibold))
-            .frame(height: vm.effectiveClosedNotchHeight)
-
-            HStack(spacing: 6) {
-                Text(item.tool)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.white)
-                Text(item.detail)
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.75))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .help(item.detail)
-                Spacer(minLength: 0)
-            }
-
-            HStack(spacing: 6) {
-                stripButton("Deny", color: .white.opacity(0.12)) { bridge.deny(item) }
-                if item.suggestions != nil {
-                    stripButton("Always allow", color: .white.opacity(0.12)) { bridge.allow(item, always: true) }
-                }
-                stripButton("Allow", color: .green.opacity(0.85)) { bridge.allow(item) }
-            }
-        }
-        .padding(.horizontal, 10)
-        .padding(.bottom, 10)
-        .frame(width: vm.closedNotchSize.width + 200)
-    }
-
-    private func stripButton(_ title: String, color: Color, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 11, weight: .semibold))
+        HStack(spacing: 0) {
+            Label("Claude", systemImage: "questionmark.bubble.fill")
+                .foregroundStyle(.orange)
+                .help("Claude asked you a question in the terminal")
+                .frame(width: 90, alignment: .leading)
+            Rectangle().fill(.black).frame(width: vm.closedNotchSize.width + 10)
+            Text(project)
                 .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .frame(height: 24)
-                .background(Capsule().fill(color))
-                .contentShape(Capsule())
+                .lineLimit(1)
+                .frame(width: 90, alignment: .trailing)
         }
-        .buttonStyle(.plain)
+        .font(.system(size: 12, weight: .semibold))
+        .frame(height: vm.effectiveClosedNotchHeight)
     }
 }
 

@@ -154,7 +154,7 @@ struct ContentView: View {
                         }
                     }
                     .onChange(of: vm.notchState) { _, newState in
-                        if newState == .open { claudeBridge.acknowledgeFinished() } // "Done" has been seen
+                        if newState == .open { claudeBridge.acknowledgeFinished(); claudeBridge.acknowledgeAsking() } // notices have been seen
                         if newState == .closed && isHovering {
                             withAnimation {
                                 isHovering = false
@@ -286,10 +286,10 @@ struct ContentView: View {
                       } else if coordinator.sneakPeek.show && Defaults[.inlineHUD] && (coordinator.sneakPeek.type != .music) && (coordinator.sneakPeek.type != .battery) && vm.notchState == .closed {
                           InlineHUD(type: $coordinator.sneakPeek.type, value: $coordinator.sneakPeek.value, icon: $coordinator.sneakPeek.icon, hoverAnimation: $isHovering, gestureProgress: $gestureProgress)
                               .transition(.opacity)
-                      } else if vm.notchState == .closed, let request = claudeBridge.pending.first {
-                          // Claude Code is waiting on a permission: small strip with Allow / Deny
-                          AgentPermissionStrip(item: request)
-                              .transition(.scale(scale: 0.8, anchor: .top).combined(with: .opacity))
+                      } else if vm.notchState == .closed && !vm.hideOnClosed, let project = claudeBridge.askingProject {
+                          // Claude Code is waiting on you in the terminal
+                          AgentAskingActivity(project: project)
+                              .transition(.opacity)
                       } else if vm.notchState == .closed && !vm.hideOnClosed, let project = claudeBridge.finishedProject {
                           AgentFinishedActivity(project: project)
                               .transition(.opacity)
@@ -556,7 +556,6 @@ struct ContentView: View {
             
             guard vm.notchState == .closed,
                   !coordinator.sneakPeek.show,
-                  claudeBridge.pending.isEmpty, // keep the approval strip put while you click it
                   Defaults[.openNotchOnHover] else { return }
             
             hoverTask = Task {

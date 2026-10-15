@@ -3,6 +3,14 @@
     <channel>
         <title>StickyNotch</title>
         <item>
+            <title>1.1</title>
+            <pubDate>Thu, 15 Oct 2026 14:36:48 -0400</pubDate>
+            <sparkle:version>2</sparkle:version>
+            <sparkle:shortVersionString>1.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://arsallls.github.io/StickyNotch/StickyNotch-1.1.dmg" length="7290819" type="application/octet-stream" sparkle:edSignature="xknnlf17lZ7gTKu76Fjo9dSeLCOV886d9YCbUV+PXlgLjqjTccCFV9z8j0ztDjZsnJqEEJVBmc2dNCkbDjEzAg=="/>
+        </item>
+        <item>
             <title>1.0</title>
             <pubDate>Thu, 15 Oct 2026 11:38:57 -0400</pubDate>
             <sparkle:version>1</sparkle:version>

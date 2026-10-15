@@ -701,7 +701,8 @@ struct About: View {
             }
             VStack(spacing: 0) {
                 Divider()
-                Text("StickyNotch is open source (GPL-3.0), built on boring.notch by TheBoredTeam.")
+                Text("StickyNotch is a modified version of boring.notch by TheBoredTeam, free software under the GNU GPL v3. It comes with ABSOLUTELY NO WARRANTY. Source code: github.com/arsallls/StickyNotch")
+                    .textSelection(.enabled)
                     .foregroundStyle(.secondary)
                     .padding(.top, 5)
                     .padding(.bottom, 7)
@@ -1319,7 +1320,7 @@ struct ClaudeCodeSettingsSection: View {
         } header: {
             Text("Claude Code")
         } footer: {
-            Text("Shows when Claude is working or done, and lets you Allow / Deny its permission requests from the notch. Turning this on adds StickyNotch's hooks to ~/.claude/settings.json (the original is backed up once); turning it off removes them. If you don't answer within 30 seconds, or StickyNotch isn't running, Claude Code shows its normal prompt.")
+            Text("Shows in the notch when Claude is working, when it's asked you a question, and when it's done. You still answer in the terminal. Turning this on adds StickyNotch's hooks to ~/.claude/settings.json (the original is backed up once); turning it off removes them.")
                 .foregroundStyle(.secondary)
                 .font(.caption)
         }

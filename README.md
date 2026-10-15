@@ -22,7 +22,7 @@ Hover over the notch and it opens into a small panel; move away and it tucks its
 - **Clipboard history**: your last 20 copied texts, kept in memory only. Passwords from password managers are skipped.
 - **File shelf**: drop files on the notch to park them, preview with Quick Look, drag them out where you need them.
 - **Next meeting**: a countdown in the closed notch with a one-click Join for Zoom, Meet, Teams and Webex.
-- **Claude Code**: see when Claude is working or done, and Allow / Deny its permission requests from the notch.
+- **Claude Code**: see when Claude is working, when it's asked you a question, and when it's done.
 
 It stays out of the way: about 50 MB of memory and ~0% CPU while idle.
 
@@ -54,4 +54,8 @@ Release builds that should receive updates need a feed address and the release s
 
 StickyNotch is a fork of **[boring.notch](https://github.com/TheBoredTeam/boring.notch)** by TheBoredTeam. Huge thanks to them for the foundation.
 
-Licensed under the [GNU General Public License v3.0](LICENSE). Third-party components are listed in [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES).
+StickyNotch is a modified version of boring.notch (forked from upstream commit [`64b5459`](https://github.com/TheBoredTeam/boring.notch/commit/64b545929cf31681e09b5c375859c1eceeb733eb)). Changes by arsallls, 2026: renamed the app, added the compact player, sticky notes, clipboard history, the file shelf trash and Quick Look, meeting countdown, Claude Code notices, notch scaling and Sparkle updates; removed the YouTube Music, download, Lottie and beta features. The full list of changes is the history of this repository.
+
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License v3 as published by the Free Software Foundation. It is distributed WITHOUT ANY WARRANTY; see the [LICENSE](LICENSE) for details.
+
+Third-party components are listed in [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES).

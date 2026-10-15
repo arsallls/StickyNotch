@@ -32,13 +32,21 @@ EXTRA=()
 FEED_URL=""
 [ -n "$FEED_BASE_URL" ] && FEED_URL="${FEED_BASE_URL}appcast.xml"
 
+# Stripping drops debug-map paths (they contain your home folder and username) from the shipped binaries.
 xcodebuild -project "$ROOT/boringNotch.xcodeproj" -scheme boringNotch -configuration Release \
   -derivedDataPath "$BUILD_DIR/DerivedData" -skipMacroValidation -skipPackagePluginValidation \
   ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO ENABLE_HARDENED_RUNTIME="$HARDENED" \
   STICKYNOTCH_FEED_URL="$FEED_URL" ${EXTRA[@]+"${EXTRA[@]}"} \
+  DEPLOYMENT_POSTPROCESSING=YES STRIP_INSTALLED_PRODUCT=YES STRIP_STYLE=non-global DEBUG_INFORMATION_FORMAT=dwarf-with-dsym \
   CODE_SIGN_IDENTITY="$SIGN_IDENTITY" DEVELOPMENT_TEAM="" build | grep -E 'error:|\*\* BUILD'
 
 APP="$BUILD_DIR/DerivedData/Build/Products/Release/StickyNotch.app"
+# Xcode doesn't strip the embedded XPC helper: strip it and re-sign it, then the app around it
+HELPER="$APP/Contents/XPCServices/BoringNotchXPCHelper.xpc"
+strip -S -x "$HELPER/Contents/MacOS/BoringNotchXPCHelper"
+codesign --force --preserve-metadata=entitlements,requirements,flags,runtime -s "$SIGN_IDENTITY" "$HELPER"
+codesign --force --preserve-metadata=entitlements,requirements,flags,runtime -s "$SIGN_IDENTITY" "$APP"
+if LC_ALL=C grep -rqa "$HOME" "$APP"; then echo "error: $APP still contains $HOME paths" >&2; exit 1; fi
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$APP/Contents/Info.plist")"
 mkdir -p "$RELEASES"
 DMG="$RELEASES/StickyNotch-$VERSION.dmg"
@@ -47,6 +55,10 @@ STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
 cp -R "$APP" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
+# GPL-3.0: ship the license (and where the source is) with every copy of the binary
+cp "$ROOT/LICENSE" "$STAGE/LICENSE.txt"
+cp "$ROOT/THIRD_PARTY_LICENSES" "$STAGE/THIRD_PARTY_LICENSES.txt"
+printf "StickyNotch is free software under the GNU GPL v3 (see LICENSE.txt), a modified version of boring.notch.\nSource code: https://github.com/arsallls/StickyNotch\nThird-party licenses: THIRD_PARTY_LICENSES.txt\n" > "$STAGE/Source Code.txt"
 
 rm -f "$DMG"
 hdiutil create -volname "StickyNotch" -srcfolder "$STAGE" -fs HFS+ -format UDZO -imagekey zlib-level=9 -ov "$DMG" >/dev/null
